@@ -1,0 +1,51 @@
+{
+  "bpm": 117,
+  "key": "Am",
+  "sections": [
+    {
+      "label": "intro",
+      "start": 0.0,
+      "key": "Am"
+    },
+    {
+      "label": "verse",
+      "start": 19.9,
+      "key": "Am"
+    },
+    {
+      "label": "chorus",
+      "start": 43.9,
+      "key": "Am"
+    },
+    {
+      "label": "chorus",
+      "start": 75.4,
+      "key": "Am"
+    },
+    {
+      "label": "chorus",
+      "start": 101.9,
+      "key": "Am"
+    },
+    {
+      "label": "bridge",
+      "start": 131.5,
+      "key": "Am"
+    },
+    {
+      "label": "chorus",
+      "start": 155.9,
+      "key": "Am"
+    },
+    {
+      "label": "verse",
+      "start": 187.2,
+      "key": "Am"
+    },
+    {
+      "label": "outro",
+      "start": 217.9,
+      "key": "G"
+    }
+  ]
+}

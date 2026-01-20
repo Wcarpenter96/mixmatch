@@ -1,0 +1,46 @@
+{
+  "bpm": 99,
+  "key": "C#m",
+  "sections": [
+    {
+      "label": "intro",
+      "start": 0.0,
+      "key": "D"
+    },
+    {
+      "label": "verse",
+      "start": 12.3,
+      "key": "Gm"
+    },
+    {
+      "label": "verse",
+      "start": 63.0,
+      "key": "G"
+    },
+    {
+      "label": "verse",
+      "start": 112.2,
+      "key": "G"
+    },
+    {
+      "label": "chorus",
+      "start": 149.9,
+      "key": "Cm"
+    },
+    {
+      "label": "chorus",
+      "start": 195.9,
+      "key": "C#"
+    },
+    {
+      "label": "chorus",
+      "start": 239.7,
+      "key": "C#"
+    },
+    {
+      "label": "outro",
+      "start": 290.5,
+      "key": "C#"
+    }
+  ]
+}

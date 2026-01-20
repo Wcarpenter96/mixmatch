@@ -1,0 +1,41 @@
+{
+  "bpm": 100,
+  "key": "G",
+  "sections": [
+    {
+      "label": "intro",
+      "start": 0.0,
+      "key": "G"
+    },
+    {
+      "label": "verse",
+      "start": 10.0,
+      "key": "G"
+    },
+    {
+      "label": "chorus",
+      "start": 68.0,
+      "key": "G"
+    },
+    {
+      "label": "verse",
+      "start": 97.4,
+      "key": "Am"
+    },
+    {
+      "label": "chorus",
+      "start": 135.0,
+      "key": "Am"
+    },
+    {
+      "label": "chorus",
+      "start": 174.0,
+      "key": "A"
+    },
+    {
+      "label": "outro",
+      "start": 216.9,
+      "key": "A"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "bpm": 116,
+  "key": "Am",
+  "sections": [
+    {
+      "label": "intro",
+      "start": 0.0
+    },
+    {
+      "label": "verse",
+      "start": 9.0
+    },
+    {
+      "label": "chorus",
+      "start": 42.0
+    },
+    {
+      "label": "verse",
+      "start": 77.0
+    },
+    {
+      "label": "chorus",
+      "start": 100.0
+    },
+    {
+      "label": "bridge",
+      "start": 135.0
+    },
+    {
+      "label": "chorus",
+      "start": 158.0
+    },
+    {
+      "label": "outro",
+      "start": 210.0
+    }
+  ]
+}
