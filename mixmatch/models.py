@@ -2,20 +2,26 @@
 Data models for audio extraction.
 """
 
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
 @dataclass
 class AudioSection:
-    """A section of audio (intro, verse, chorus, outro)."""
-    
-    label: str  # "intro", "verse", "chorus", "outro"
+    """A section of audio (intro, verse, chorus, bridge, outro)."""
+
+    label: str  # "intro", "verse", "chorus", "bridge", "outro"
     start: float  # Start time in seconds
     key: str  # Musical key (e.g., "Am", "C", "G")
-    
+    lyrics: Optional[str] = None  # Transcribed lyrics for this section
+
     def __str__(self) -> str:
-        return f"{self.label} @ {self.start:.1f}s in {self.key}"
+        base = f"{self.label} @ {self.start:.1f}s in {self.key}"
+        if self.lyrics:
+            # Show first 50 chars of lyrics
+            preview = self.lyrics[:50] + "..." if len(self.lyrics) > 50 else self.lyrics
+            base += f' "{preview}"'
+        return base
 
 
 @dataclass

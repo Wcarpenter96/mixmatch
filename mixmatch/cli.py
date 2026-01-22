@@ -1,5 +1,5 @@
 """
-CLI for MixMatch - extract BPM, sections, and keys from local audio files.
+CLI for MixMatch - extract BPM, sections, keys, and lyrics from local audio files.
 """
 
 import click
@@ -50,7 +50,7 @@ def extract_cmd(audio_path: str, output_json: bool, output_file: str):
 
             for i, section in enumerate(result["sections"], 1):
                 click.echo(
-                    f"{i}. {section['label'].capitalize()} @ {section['start']:.1f}s ({section['key']})"
+                    f"{i}. {section['label'].capitalize()} @ {int(section['start']//60)}:{int(section['start']%60):02d} ({section['key']})"
                 )
             click.echo()
 

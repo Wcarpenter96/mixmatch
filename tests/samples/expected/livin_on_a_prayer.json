@@ -1,0 +1,51 @@
+{
+  "bpm": 123,
+  "key": "Em",
+  "sections": [
+    {
+      "label": "intro",
+      "start": 0.0,
+      "key": "Em"
+    },
+    {
+      "label": "verse",
+      "start": 47.0,
+      "key": "Em"
+    },
+    {
+      "label": "prechorus",
+      "start": 78.0,
+      "key": "C"
+    },
+    {
+      "label": "chorus",
+      "start": 94.0,
+      "key": "C"
+    },
+    {
+      "label": "verse",
+      "start": 114.0,
+      "key": "Em"
+    },
+    {
+      "label": "prechorus",
+      "start": 144.0,
+      "key": "C"
+    },
+    {
+      "label": "chorus",
+      "start": 160.9,
+      "key": "C"
+    },
+    {
+      "label": "bridge",
+      "start": 180.9,
+      "key": "C"
+    },
+    {
+      "label": "chorus",
+      "start": 200.5,
+      "key": "Eb"
+    }
+  ]
+}
