@@ -1,16 +1,14 @@
 """
 Vocal extraction and lyrics transcription.
 
-Uses Whisper for direct audio transcription.
+Uses Demucs for vocal isolation and Whisper for transcription.
 Provides lyric similarity analysis to help identify repeated sections (choruses).
 """
 
 import os
 import tempfile
-import shutil
-from typing import List, Dict, Tuple, Optional
+from typing import List, Tuple, Optional
 import numpy as np
-import librosa
 import soundfile as sf
 
 # Lazy imports to avoid loading heavy models at module import time
@@ -27,12 +25,45 @@ def _get_whisper():
 
 
 def transcribe_audio(
+    audio: np.ndarray,
+    sr: int = 22050,
+) -> str:
+    """
+    Transcribe audio to text using Whisper.
+
+    Args:
+        audio: Audio signal as numpy array
+        sr: Sample rate of the audio
+
+    Returns:
+        Transcribed text
+    """
+    model = _get_whisper()
+
+    # Whisper expects 16kHz audio
+    if sr != 16000:
+        import librosa
+        audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+
+    # Write to temp file for Whisper
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        temp_path = f.name
+        sf.write(temp_path, audio, 16000)
+
+    try:
+        result = model.transcribe(temp_path, language="en", fp16=False)
+        return result["text"].strip()
+    finally:
+        os.unlink(temp_path)
+
+
+def transcribe_audio_file(
     audio_path: str,
     start_time: Optional[float] = None,
     end_time: Optional[float] = None,
 ) -> str:
     """
-    Transcribe audio to text using Whisper.
+    Transcribe audio file to text using Whisper.
 
     Args:
         audio_path: Path to audio file
@@ -42,6 +73,8 @@ def transcribe_audio(
     Returns:
         Transcribed text
     """
+    import librosa
+
     model = _get_whisper()
 
     # If segment times are specified, extract that portion
@@ -67,17 +100,19 @@ def transcribe_audio(
 
 
 def transcribe_sections(
-    vocals_path: str,
+    vocals: np.ndarray,
     boundaries: List[float],
     duration: float,
+    sr: int = 22050,
 ) -> List[str]:
     """
-    Transcribe lyrics for each section.
+    Transcribe lyrics for each section from isolated vocals.
 
     Args:
-        vocals_path: Path to isolated vocals audio
+        vocals: Isolated vocals audio (from Demucs)
         boundaries: List of section start times in seconds
         duration: Total audio duration in seconds
+        sr: Sample rate of vocals
 
     Returns:
         List of transcribed lyrics for each section
@@ -97,7 +132,16 @@ def transcribe_sections(
             continue
 
         try:
-            section_lyrics = transcribe_audio(vocals_path, start_time, end_time)
+            # Extract segment from vocals
+            start_sample = int(start_time * sr)
+            end_sample = int(end_time * sr)
+            segment = vocals[start_sample:end_sample]
+
+            if len(segment) == 0:
+                lyrics.append("")
+                continue
+
+            section_lyrics = transcribe_audio(segment, sr)
             lyrics.append(section_lyrics)
         except Exception as e:
             print(f"Warning: Failed to transcribe section {i}: {e}")
@@ -152,22 +196,79 @@ def extract_vocals_and_lyrics(
     audio_path: str,
     boundaries: List[float],
     duration: float,
+    use_source_separation: bool = True,
 ) -> Tuple[List[str], np.ndarray]:
     """
-    Full pipeline: transcribe sections and compute lyric similarity.
+    Full pipeline: isolate vocals, transcribe sections, compute lyric similarity.
 
     Args:
         audio_path: Path to original audio file
         boundaries: Section boundary times
         duration: Total audio duration
+        use_source_separation: Whether to use Demucs for vocal isolation
 
     Returns:
         Tuple of (lyrics_per_section, lyric_similarity_matrix)
     """
-    # Transcribe each section directly from the audio
-    lyrics = transcribe_sections(audio_path, boundaries, duration)
+    if use_source_separation:
+        try:
+            from .source_separator import get_vocals
+            vocals = get_vocals(audio_path)
+
+            if len(vocals) > 0:
+                # Transcribe each section from isolated vocals
+                lyrics = transcribe_sections(vocals, boundaries, duration, sr=22050)
+            else:
+                # Fallback to direct transcription
+                lyrics = _transcribe_sections_direct(audio_path, boundaries, duration)
+        except ImportError as e:
+            print(f"Warning: Source separation unavailable ({e}). Falling back to direct transcription.")
+            lyrics = _transcribe_sections_direct(audio_path, boundaries, duration)
+        except Exception as e:
+            print(f"Warning: Vocal separation failed: {e}. Falling back to direct transcription.")
+            lyrics = _transcribe_sections_direct(audio_path, boundaries, duration)
+    else:
+        lyrics = _transcribe_sections_direct(audio_path, boundaries, duration)
 
     # Compute lyric similarity
     similarity = compute_lyric_similarity(lyrics)
 
     return lyrics, similarity
+
+
+def _transcribe_sections_direct(
+    audio_path: str,
+    boundaries: List[float],
+    duration: float,
+) -> List[str]:
+    """
+    Transcribe sections directly from mixed audio (fallback).
+
+    Args:
+        audio_path: Path to audio file
+        boundaries: Section boundary times
+        duration: Total audio duration
+
+    Returns:
+        List of transcribed lyrics
+    """
+    lyrics = []
+
+    for i, start_time in enumerate(boundaries):
+        if i + 1 < len(boundaries):
+            end_time = boundaries[i + 1]
+        else:
+            end_time = duration
+
+        if end_time - start_time < 3.0:
+            lyrics.append("")
+            continue
+
+        try:
+            section_lyrics = transcribe_audio_file(audio_path, start_time, end_time)
+            lyrics.append(section_lyrics)
+        except Exception as e:
+            print(f"Warning: Failed to transcribe section {i}: {e}")
+            lyrics.append("")
+
+    return lyrics
