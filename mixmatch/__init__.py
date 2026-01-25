@@ -27,6 +27,11 @@ from mixmatch.source_separator import (
     get_drums,
     detect_drum_drops,
 )
+from mixmatch.melody_analyzer import (
+    extract_melody_from_vocals,
+    compute_melody_similarity,
+    find_repeated_melodic_phrases,
+)
 
 __all__ = [
     # Main API
@@ -41,4 +46,8 @@ __all__ = [
     "get_vocals",
     "get_drums",
     "detect_drum_drops",
+    # Melody analysis
+    "extract_melody_from_vocals",
+    "compute_melody_similarity",
+    "find_repeated_melodic_phrases",
 ]
