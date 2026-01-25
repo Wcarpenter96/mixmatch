@@ -50,7 +50,7 @@ def extract_cmd(audio_path: str, output_json: bool, output_file: str):
 
             for i, section in enumerate(result["sections"], 1):
                 click.echo(
-                    f"{i}. {section['label'].capitalize()} @ {int(section['start']//60)}:{int(section['start']%60):02d} ({section['key']})"
+                    f"{i}. {section['label'].capitalize()} @ {section['start']} ({section['key']})"
                 )
             click.echo()
 

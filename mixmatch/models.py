@@ -11,12 +11,19 @@ class AudioSection:
     """A section of audio (intro, verse, chorus, bridge, outro)."""
 
     label: str  # "intro", "verse", "chorus", "bridge", "outro"
-    start: float  # Start time in seconds
+    start_seconds: float  # Start time in seconds
     key: str  # Musical key (e.g., "Am", "C", "G")
     lyrics: Optional[str] = None  # Transcribed lyrics for this section
 
+    @property
+    def start(self) -> str:
+        """Start time formatted as mm:ss."""
+        minutes = int(self.start_seconds // 60)
+        seconds = int(self.start_seconds % 60)
+        return f"{minutes}:{seconds:02d}"
+
     def __str__(self) -> str:
-        base = f"{self.label} @ {self.start:.1f}s in {self.key}"
+        base = f"{self.label} @ {self.start} ({self.start_seconds:.1f}s) in {self.key}"
         if self.lyrics:
             # Show first 50 chars of lyrics
             preview = self.lyrics[:50] + "..." if len(self.lyrics) > 50 else self.lyrics

@@ -125,20 +125,7 @@ def extract(audio_path: str, use_source_separation: bool = True) -> Dict:
         except Exception as e:
             print(f"Warning: Drum analysis failed: {e}")
 
-    # Step 11: Extract vocals and transcribe lyrics
-    lyrics_per_section = None
-    lyric_similarity = None
-    try:
-        from .vocals_extractor import extract_vocals_and_lyrics
-        lyrics_per_section, lyric_similarity = extract_vocals_and_lyrics(
-            audio_path, boundaries, duration, use_source_separation=use_source_separation
-        )
-    except ImportError:
-        print("Warning: Whisper not installed. Skipping lyrics extraction.")
-    except Exception as e:
-        print(f"Warning: Vocals extraction failed: {e}")
-
-    # Step 12: Compute energy per section
+    # Step 11: Compute energy per section (needed for initial labeling)
     energy_per_section = compute_energy_per_section(y, sr, boundaries, duration, hop_length)
 
     # Compute harmonic energy per section
@@ -155,25 +142,47 @@ def extract(audio_path: str, use_source_separation: bool = True) -> Dict:
             tempo_stability, sr, boundaries, duration, hop_length
         )
 
-    # Step 13: Label sections
-    labels = label_sections(
+    # Step 12: Initial section labeling (before lyrics refinement)
+    initial_labels = label_sections(
         boundaries,
         section_similarity,
         energy_per_section,
         duration,
         harmonic_energy_per_section=harmonic_energy_per_section,
         tempo_stability_per_section=tempo_stability_per_section,
-        lyric_similarity=lyric_similarity,
-        lyrics_per_section=lyrics_per_section,
+        lyric_similarity=None,  # No lyrics yet
+        lyrics_per_section=None,
         drum_energy_per_section=drum_energy_per_section,
     )
 
+    # Step 13: Extract vocals, transcribe lyrics, and refine boundaries
+    # This uses word-level timestamps to align choruses at the same lyrical content
+    refined_boundaries = boundaries
+    refined_labels = initial_labels
+    lyrics_per_section = None
+    lyric_similarity = None
+
+    try:
+        from .vocals_extractor import extract_vocals_lyrics_and_refine_boundaries
+        refined_boundaries, refined_labels, lyrics_per_section, lyric_similarity = \
+            extract_vocals_lyrics_and_refine_boundaries(
+                audio_path,
+                boundaries,
+                initial_labels,
+                duration,
+                use_source_separation=use_source_separation,
+            )
+    except ImportError:
+        print("Warning: Whisper not installed. Skipping lyrics extraction.")
+    except Exception as e:
+        print(f"Warning: Vocals extraction failed: {e}")
+
     # Step 14: Build output sections with per-section key detection and lyrics
     sections = []
-    for i, boundary_time in enumerate(boundaries):
+    for i, boundary_time in enumerate(refined_boundaries):
         start_frame = int(boundary_time * n_chroma_frames / duration)
-        if i + 1 < len(boundaries):
-            end_frame = int(boundaries[i + 1] * n_chroma_frames / duration)
+        if i + 1 < len(refined_boundaries):
+            end_frame = int(refined_boundaries[i + 1] * n_chroma_frames / duration)
         else:
             end_frame = n_chroma_frames
 
@@ -183,9 +192,16 @@ def extract(audio_path: str, use_source_separation: bool = True) -> Dict:
         if lyrics_per_section and i < len(lyrics_per_section):
             section_lyrics = lyrics_per_section[i] if lyrics_per_section[i] else None
 
+        # Format start time as mm:ss
+        start_seconds = round(boundary_time, 1)
+        minutes = int(start_seconds // 60)
+        secs = int(start_seconds % 60)
+        start_formatted = f"{minutes}:{secs:02d}"
+
         sections.append({
-            "label": labels[i],
-            "start": round(boundary_time, 1),
+            "label": refined_labels[i] if i < len(refined_labels) else "verse",
+            "start": start_formatted,
+            "start_seconds": start_seconds,
             "key": section_key,
             "lyrics": section_lyrics,
         })

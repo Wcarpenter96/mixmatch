@@ -494,7 +494,7 @@ def merge_adjacent_sections(sections: List[dict]) -> List[dict]:
     Special handling for choruses: don't merge if far apart or different keys.
 
     Args:
-        sections: List of section dictionaries with 'label', 'start', 'key', 'lyrics'
+        sections: List of section dictionaries with 'label', 'start', 'start_seconds', 'key', 'lyrics'
 
     Returns:
         Merged list of sections
@@ -505,7 +505,7 @@ def merge_adjacent_sections(sections: List[dict]) -> List[dict]:
         if merged and merged[-1]["label"] == section["label"]:
             # For chorus sections, don't merge if they're far apart or have different keys
             if section["label"] == "chorus":
-                time_gap = section["start"] - merged[-1]["start"]
+                time_gap = section["start_seconds"] - merged[-1]["start_seconds"]
                 if time_gap > 30:
                     merged.append(section)
                     continue
