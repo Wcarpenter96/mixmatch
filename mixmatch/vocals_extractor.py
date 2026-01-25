@@ -431,6 +431,11 @@ def refine_boundaries_with_phrases(
     used_boundaries = set()
 
     for idx, phrase_start in enumerate(all_phrase_starts):
+        # Skip phrase starts that are too close to the end of the song
+        # (would create a tiny section at the end)
+        if duration - phrase_start < min_section_duration:
+            continue
+
         # Find the closest original boundary before this phrase
         prev_boundary = None
         prev_idx = None
@@ -516,6 +521,78 @@ def refine_boundaries_with_phrases(
         new_boundaries = filtered_boundaries
         new_labels = filtered_labels
 
+    # Detect bridges: verse sections in the latter half of the song with unique content
+    # Bridges typically appear once, late in the song, with different lyrics from verses
+    if len(new_boundaries) >= 4:  # Need enough sections to have a bridge
+        # Find verse sections in the latter 60% of the song
+        song_midpoint = duration * 0.4  # Bridge usually appears after 40% of the song
+
+        verse_indices = [
+            i for i, label in enumerate(new_labels)
+            if label == 'verse' and new_boundaries[i] > song_midpoint
+        ]
+
+        if verse_indices and full_transcription is not None:
+            # Get lyrics for each section to check for uniqueness
+            temp_lyrics = []
+            for i in range(len(new_boundaries)):
+                section_start = new_boundaries[i]
+                section_end = new_boundaries[i + 1] if i + 1 < len(new_boundaries) else duration
+                section_words = [
+                    w for w in full_transcription.words
+                    if w.start >= section_start - 0.1 and w.start < section_end
+                ]
+                section_text = " ".join(w.word.lower() for w in section_words).strip()
+                temp_lyrics.append(section_text)
+
+            # Check each late verse for bridge characteristics
+            for verse_idx in verse_indices:
+                verse_lyrics = temp_lyrics[verse_idx]
+                if not verse_lyrics:
+                    continue
+
+                # Check if this verse's content is unique (doesn't repeat in other verses)
+                is_unique = True
+                verse_words = set(verse_lyrics.split())
+
+                # Bridges need substantial content - at least 15 words
+                # Tiny fragments like "I'm alone?" should not be labeled as bridges
+                if len(verse_words) < 15:
+                    continue
+
+                for other_idx, other_lyrics in enumerate(temp_lyrics):
+                    if other_idx == verse_idx or new_labels[other_idx] != 'verse':
+                        continue
+                    if not other_lyrics:
+                        continue
+
+                    other_words = set(other_lyrics.split())
+                    # Calculate word overlap
+                    if len(verse_words) > 0 and len(other_words) > 0:
+                        overlap = len(verse_words & other_words) / min(len(verse_words), len(other_words))
+                        if overlap > 0.5:  # More than 50% word overlap = not unique
+                            is_unique = False
+                            break
+
+                # If unique content and in latter part of song, it's likely a bridge
+                if is_unique:
+                    new_labels[verse_idx] = 'bridge'
+
+    # Relabel "intro" sections that have substantial lyrics as "verse"
+    # True intros are typically instrumental or have minimal spoken words
+    if full_transcription is not None and len(new_boundaries) > 0:
+        for i, label in enumerate(new_labels):
+            if label == 'intro':
+                section_start = new_boundaries[i]
+                section_end = new_boundaries[i + 1] if i + 1 < len(new_boundaries) else duration
+                section_words = [
+                    w for w in full_transcription.words
+                    if w.start >= section_start - 0.1 and w.start < section_end
+                ]
+                # If more than 10 words, it's likely a verse, not an intro
+                if len(section_words) > 10:
+                    new_labels[i] = 'verse'
+
     # Regenerate lyrics for the new sections using full transcription if available
     new_lyrics = []
 
@@ -538,7 +615,7 @@ def refine_boundaries_with_phrases(
         # Find words within this section
         section_words = [
             w for w in all_words
-            if w.start >= section_start - 0.5 and w.start < section_end
+            if w.start >= section_start - 0.1 and w.start < section_end
         ]
         section_text = " ".join(w.word for w in section_words).strip()
         new_lyrics.append(section_text)
@@ -692,9 +769,11 @@ def extract_vocals_lyrics_and_refine_boundaries(
                 end_time = boundaries[i + 1] if i + 1 < len(boundaries) else duration
 
                 # Extract words for this section
+                # Use a small buffer (0.1s) to catch words that start just before the boundary
+                # but avoid pulling in words that clearly belong to the previous section
                 section_words = [
                     w for w in full_transcription.words
-                    if w.start >= start_time - 0.5 and w.start < end_time
+                    if w.start >= start_time - 0.1 and w.start < end_time
                 ]
                 section_text = " ".join(w.word for w in section_words).strip()
                 section_transcriptions.append(TranscriptionResult(
@@ -719,9 +798,10 @@ def extract_vocals_lyrics_and_refine_boundaries(
             final_lyrics = []
             for i, start_time in enumerate(refined_boundaries):
                 end_time = refined_boundaries[i + 1] if i + 1 < len(refined_boundaries) else duration
+                # Use a small buffer (0.1s) to catch words that start just before the boundary
                 section_words = [
                     w for w in full_transcription.words
-                    if w.start >= start_time - 0.5 and w.start < end_time
+                    if w.start >= start_time - 0.1 and w.start < end_time
                 ]
                 section_text = " ".join(w.word for w in section_words).strip()
                 final_lyrics.append(section_text)

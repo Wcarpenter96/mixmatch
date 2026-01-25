@@ -5,9 +5,12 @@ Coordinates the extraction of BPM, sections, keys, and lyrics from audio files.
 Uses modular components for each analysis task.
 """
 
-from typing import Dict, Optional
+import os
+from pathlib import Path
+from typing import Dict, List, Optional
 import numpy as np
 import librosa
+import soundfile as sf
 
 from .key_detector import detect_key, detect_section_key, compute_key_invariant_chroma
 from .features import (
@@ -27,7 +30,12 @@ from .section_detector import (
 )
 
 
-def extract(audio_path: str, use_source_separation: bool = True) -> Dict:
+def extract(
+    audio_path: str,
+    use_source_separation: bool = True,
+    include_melody: bool = False,
+    export_sections: Optional[str] = None,
+) -> Dict:
     """
     Extract BPM, sections, keys, and lyrics from audio file.
 
@@ -40,6 +48,8 @@ def extract(audio_path: str, use_source_separation: bool = True) -> Dict:
     Args:
         audio_path: Path to audio file
         use_source_separation: Whether to use Demucs for vocal isolation
+        include_melody: Whether to include MIDI melody data in output
+        export_sections: If provided, path to directory where section audio files will be saved
 
     Returns:
         Dictionary with structure:
@@ -47,9 +57,10 @@ def extract(audio_path: str, use_source_separation: bool = True) -> Dict:
             "bpm": int,
             "key": str,
             "sections": [
-                {"label": str, "start": float, "key": str, "lyrics": str},
+                {"label": str, "start": float, "key": str, "lyrics": str, "melody": [...]},
                 ...
-            ]
+            ],
+            "chorus_melody": [...] (if include_melody=True)
         }
     """
     # Step 1: Load audio
@@ -209,8 +220,102 @@ def extract(audio_path: str, use_source_separation: bool = True) -> Dict:
     # Step 15: Merge adjacent sections with same label
     merged_sections = merge_adjacent_sections(sections)
 
-    return {
+    # Step 16: Extract melody data if requested
+    chorus_melody = None
+    if include_melody:
+        try:
+            from .melody_analyzer import extract_melody_from_vocals, NoteEvent
+            from .source_separator import get_vocals
+
+            vocals = get_vocals(audio_path)
+            all_notes = extract_melody_from_vocals(vocals, sr=22050)
+
+            # Add melody to each section
+            for section in merged_sections:
+                start_sec = section["start_seconds"]
+                # Find end time
+                section_idx = merged_sections.index(section)
+                if section_idx + 1 < len(merged_sections):
+                    end_sec = merged_sections[section_idx + 1]["start_seconds"]
+                else:
+                    end_sec = duration
+
+                # Filter notes for this section
+                section_notes = [
+                    {
+                        "pitch": n.pitch,
+                        "start": round(n.start - start_sec, 3),
+                        "end": round(n.end - start_sec, 3),
+                        "duration": round(n.end - n.start, 3),
+                    }
+                    for n in all_notes
+                    if n.start >= start_sec and n.start < end_sec
+                ]
+                section["melody"] = section_notes if section_notes else None
+
+            # Extract chorus melody summary (from first chorus section)
+            for section in merged_sections:
+                if section["label"] == "chorus" and section.get("melody"):
+                    chorus_melody = section["melody"]
+                    break
+
+        except Exception as e:
+            print(f"Warning: Melody extraction failed ({e}). Skipping melody data.")
+
+    # Step 17: Export section audio files if requested
+    if export_sections:
+        try:
+            export_path = Path(export_sections)
+            export_path.mkdir(parents=True, exist_ok=True)
+
+            # Load full audio for slicing
+            y_full, sr_full = librosa.load(audio_path, sr=None, mono=False)
+
+            audio_name = Path(audio_path).stem
+
+            for i, section in enumerate(merged_sections):
+                start_sec = section["start_seconds"]
+                # Find end time
+                if i + 1 < len(merged_sections):
+                    end_sec = merged_sections[i + 1]["start_seconds"]
+                else:
+                    end_sec = duration
+
+                # Extract audio segment
+                start_sample = int(start_sec * sr_full)
+                end_sample = int(end_sec * sr_full)
+
+                if y_full.ndim == 1:
+                    segment = y_full[start_sample:end_sample]
+                else:
+                    segment = y_full[:, start_sample:end_sample]
+
+                # Create filename: 01_verse_0m00s.wav
+                label = section["label"]
+                time_str = section["start"].replace(":", "m") + "s"
+                filename = f"{i+1:02d}_{label}_{time_str}.wav"
+                filepath = export_path / filename
+
+                # Save segment
+                if segment.ndim == 1:
+                    sf.write(filepath, segment, sr_full)
+                else:
+                    sf.write(filepath, segment.T, sr_full)
+
+                section["audio_file"] = str(filepath)
+
+            print(f"Exported {len(merged_sections)} section audio files to {export_path}")
+
+        except Exception as e:
+            print(f"Warning: Failed to export section audio ({e}).")
+
+    result = {
         "bpm": bpm,
         "key": song_key,
         "sections": merged_sections,
     }
+
+    if include_melody and chorus_melody:
+        result["chorus_melody"] = chorus_melody
+
+    return result

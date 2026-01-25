@@ -26,13 +26,25 @@ def main():
     type=click.Path(),
     help="Write JSON output to file"
 )
-def extract_cmd(audio_path: str, output_json: bool, output_file: str):
+@click.option(
+    "--melody",
+    "include_melody",
+    is_flag=True,
+    help="Include MIDI melody data for each section"
+)
+@click.option(
+    "--export-sections",
+    "export_sections",
+    type=click.Path(),
+    help="Export section audio files to specified directory"
+)
+def extract_cmd(audio_path: str, output_json: bool, output_file: str, include_melody: bool, export_sections: str):
     """Extract BPM, sections, and keys from a local audio file."""
     import json
 
     try:
         click.echo(f"🎵 Analyzing audio file: {audio_path}\n")
-        result = extract(audio_path)
+        result = extract(audio_path, include_melody=include_melody, export_sections=export_sections)
 
         # Write to file if output path specified
         if output_file:
