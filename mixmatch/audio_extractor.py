@@ -116,7 +116,10 @@ def extract(
         pass
 
     # Step 10: Extract drum energy for bridge detection (using Demucs)
+    # Save raw drum RMS data so it can be reused for refined boundaries
     drum_energy_per_section = None
+    drum_rms = None
+    drum_times = None
     if use_source_separation:
         try:
             from .source_separator import analyze_drum_energy
@@ -154,7 +157,7 @@ def extract(
         )
 
     # Step 12: Initial section labeling (before lyrics refinement)
-    initial_labels = label_sections(
+    initial_labels, initial_detection_methods = label_sections(
         boundaries,
         section_similarity,
         energy_per_section,
@@ -170,6 +173,7 @@ def extract(
     # This uses word-level timestamps to align choruses at the same lyrical content
     refined_boundaries = boundaries
     refined_labels = initial_labels
+    detection_methods = initial_detection_methods
     lyrics_per_section = None
     lyric_similarity = None
 
@@ -183,12 +187,89 @@ def extract(
                 duration,
                 use_source_separation=use_source_separation,
             )
+
+        # Re-run section labeling with lyrics info to get proper detection_methods
+        # This captures which signals (lyrics, energy, etc.) determined each label
+        if len(refined_boundaries) != len(boundaries) or refined_boundaries != boundaries or refined_labels != initial_labels:
+            try:
+                # Recompute features for refined boundaries
+                refined_energy = compute_energy_per_section(y, sr, refined_boundaries, duration, hop_length)
+                refined_harmonic = None
+                if rms_harmonic is not None:
+                    refined_harmonic = compute_harmonic_energy_per_section(
+                        rms_harmonic, sr, refined_boundaries, duration, hop_length
+                    )
+                refined_stability = None
+                if tempo_stability is not None:
+                    refined_stability = compute_stability_per_section(
+                        tempo_stability, sr, refined_boundaries, duration, hop_length
+                    )
+
+                # Recompute drum energy for refined boundaries using saved RMS data
+                refined_drum_energy = None
+                if drum_rms is not None and drum_times is not None and len(drum_rms) > 0:
+                    refined_drum_energy = []
+                    for i in range(len(refined_boundaries)):
+                        start_time = refined_boundaries[i]
+                        end_time = refined_boundaries[i + 1] if i + 1 < len(refined_boundaries) else duration
+                        mask = (drum_times >= start_time) & (drum_times < end_time)
+                        section_drum = drum_rms[mask]
+                        drum_energy = float(np.mean(section_drum)) if len(section_drum) > 0 else 0.0
+                        refined_drum_energy.append(drum_energy)
+
+                # Recompute section similarity for refined boundaries
+                refined_rec_matrix = build_recurrence_matrix(key_inv_chroma, hop_length, sr)
+                refined_section_sim = compute_section_similarity(refined_rec_matrix, refined_boundaries, duration)
+
+                # Get detection methods with full context including lyrics and drum energy
+                audio_based_labels, detection_methods = label_sections(
+                    refined_boundaries,
+                    refined_section_sim,
+                    refined_energy,
+                    duration,
+                    harmonic_energy_per_section=refined_harmonic,
+                    tempo_stability_per_section=refined_stability,
+                    lyric_similarity=lyric_similarity,
+                    lyrics_per_section=lyrics_per_section,
+                    drum_energy_per_section=refined_drum_energy,
+                )
+
+                # Check for label mismatches between audio-based and lyric-refined labels
+                # When they differ, update detection_method to explain the override
+                for i in range(min(len(refined_labels), len(audio_based_labels))):
+                    if refined_labels[i] != audio_based_labels[i]:
+                        original_detection = detection_methods[i]
+                        detection_methods[i] = {
+                            'primary_signal': 'lyric_analysis_override',
+                            'reasons': [
+                                f'audio analysis suggested "{audio_based_labels[i]}" but lyric boundary refinement assigned "{refined_labels[i]}"',
+                                f'original audio signal: {original_detection.get("primary_signal", "unknown")}'
+                            ],
+                            'scores': original_detection.get('scores', {}),
+                            'audio_based_label': audio_based_labels[i],
+                            'audio_based_reasons': original_detection.get('reasons', [])
+                        }
+            except Exception as e:
+                print(f"Warning: Detection method recomputation failed: {e}")
+                # Generate default detection methods for refined boundaries
+                detection_methods = [
+                    {'primary_signal': 'lyrics_refined', 'reasons': ['boundary refined by lyric analysis']}
+                    for _ in refined_boundaries
+                ]
     except ImportError:
         print("Warning: Whisper not installed. Skipping lyrics extraction.")
     except Exception as e:
         print(f"Warning: Vocals extraction failed: {e}")
 
     # Step 14: Build output sections with per-section key detection and lyrics
+    # Safety check: ensure detection_methods length matches refined_boundaries
+    if len(detection_methods) != len(refined_boundaries):
+        print(f"Warning: Detection methods length mismatch ({len(detection_methods)} vs {len(refined_boundaries)} sections). Regenerating.")
+        detection_methods = [
+            {'primary_signal': 'default', 'reasons': ['detection method unavailable']}
+            for _ in refined_boundaries
+        ]
+
     sections = []
     for i, boundary_time in enumerate(refined_boundaries):
         start_frame = int(boundary_time * n_chroma_frames / duration)
@@ -203,6 +284,11 @@ def extract(
         if lyrics_per_section and i < len(lyrics_per_section):
             section_lyrics = lyrics_per_section[i] if lyrics_per_section[i] else None
 
+        # Get detection method for this section
+        section_detection = None
+        if detection_methods and i < len(detection_methods):
+            section_detection = detection_methods[i]
+
         # Format start time as mm:ss
         start_seconds = round(boundary_time, 1)
         minutes = int(start_seconds // 60)
@@ -215,6 +301,7 @@ def extract(
             "start_seconds": start_seconds,
             "key": section_key,
             "lyrics": section_lyrics,
+            "detection_method": section_detection,
         })
 
     # Step 15: Merge adjacent sections with same label

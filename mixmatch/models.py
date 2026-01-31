@@ -14,6 +14,7 @@ class AudioSection:
     start_seconds: float  # Start time in seconds
     key: str  # Musical key (e.g., "Am", "C", "G")
     lyrics: Optional[str] = None  # Transcribed lyrics for this section
+    detection_method: Optional[dict] = None  # How this section was detected/classified
 
     @property
     def start(self) -> str:
